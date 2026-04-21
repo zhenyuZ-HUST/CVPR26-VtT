@@ -1,137 +1,152 @@
-# Low-Rank Few-Shot Adaptation of Vision-Language Models [CVPRW 2024]
+# VtT: Reclaiming Lost Text Layers for Source-Free Cross-Domain Few-Shot Learning
 
-The official implementation of [*Low-Rank Few-Shot Adaptation of Vision-Language Models*](https://arxiv.org/abs/2405.18541).
+Official implementation for **CVPR 2026** poster paper: *"Reclaiming Lost Text Layers for Source-Free Cross-Domain Few-Shot Learning"*.
 
-**Authors**:
-[Maxime Zanella](https://scholar.google.com/citations?user=FIoE9YIAAAAJ&hl=fr&oi=ao),
-[Ismail Ben Ayed](https://scholar.google.com/citations?user=29vyUccAAAAJ&hl=fr&oi=ao).
+## 📋 Overview
 
-We present CLIP-LoRA, an easy-to-use few-shot method for Vision-Language Models with fixed hyperparameters for every task and every number of shots. This repository also aims at facilitating the usage of Low-Rank adapters (LoRA) in Vision-Language Models like CLIP.
-
-<p align="center">
-  <img src="peft2.jpg" alt="PEFT" width="300" height="250">
-  <br>
-  <em>Figure 1: Low-Rank Adaptation (LoRA) is easy to use and does not create any additional inference latency.</em>
-</p>
-
-Here is how to run the experiments:
-
-1. [Installation](#installation) 
-2. [Usage](#how-to-execute-CLIP-LoRA) 
-
-A quick guide on how LoRA is implemented in this repository:
-
-3. [LoRA in MultiheadAttention](#lora-in-multiheadattention)
-
-Please consider supporting our work:
-
-4. [Citation](#citation)
-
-If you have any inquiries:
-
-5. [Contact](#contact)
-   
-
-## Installation 
-
-### Environment configuration
-
-Our code requires an environment with PyTorch installed. If you don't have one, consider creating a Python environment with:
-```bash
-conda create -y --name CLIP-LoRA python=3.10.0
-conda activate CLIP-LoRA
-```
-And install Pytorch for instance with:
-```bash
-pip3 install torch==2.0.1 torchaudio==2.0.2 torchvision==0.15.2
-```
-
-### Datasets installation
-
-Please follow [DATASETS.md](DATASETS.md) to install the datasets.
-
-## How to execute CLIP-LoRA
-
-Execute CLIP-LoRA on the ImageNet dataset with a random seed of 1 by entering the following command:
-
-```bash
-python main.py --root_path /path/to/your/data --dataset imagenet --seed 1
-```
-
-You can also exectute CLIP-LoRA on the 10 other datasets:
-
-```bash
-python main.py --root_path /path/to/your/data --dataset dataset_name --seed 1
-```
-
-You can optionally provide a save_path to save the LoRA modules, which can be reload easily with the --eval_only argument. The code will automatically check if your trained LoRA with the corresponding rank, alpha, encoder, params and position to ensure compatibility. The folder will be structured like that:
-```
-/your/save/path
-└── backbone
-    └── dataset
-        └── Xshots
-            ├── seedY
-```
-
-Here is the command line:
-```bash
-python main.py --root_path /path/to/your/data --dataset dataset_name --seed 1 --save_path /your/save/path --eval_only 
-```
-
-## LoRA in MultiheadAttention
-
-The `PlainMultiheadAttentionLoRA` class in `loralib/layers.py` extends the standard PyTorch multi-head attention mechanism by incorporating Low-Rank Adaptation (LoRA). This class constructs explicit linear modules for each component of the attention mechanism—query (`q`), key (`k`), value (`v`), and output (`o`)—providing a structured and adaptable foundation for your experiments.
-
-### Class Overview
-
-`PlainMultiheadAttentionLoRA` takes an existing `nn.MultiheadAttention` module, replicates its configuration, and integrates LoRA linear modules.
+This repository presents VtT (teach Vision To learn from Text), a novel method for Source-Free Cross-Domain Few-Shot Learning (SF-CDFSL). 
 
 ### Key Features
+- **Source-Free**: No access to source domain training data required
+- **Cross-Domain**: Handles significant domain shifts between source and target
+- **Few-Shot**: Learns from limited labeled examples (1-shot or 5-shot)
+- **Vision-to-Text Bridge**: Novel Mamba architecture for cross-modal alignment
 
-- **Parameter Initialization:** The initialization process involves copying weights and biases from a pre-existing multi-head attention model. Each LoRA module (`q`, `k`, `v`, `o`) is adapted based on the specified requirements in the `enable_lora` list.
-- **LoRA Integration:** The replacement of standard linear layers with `LinearLoRA` layers introduces low-rank matrices, which are parameterized by the rank of adaptation (`r`) and the scaling factor (`lora_alpha`).
-- **Forward Pass:** The `forward_module` method manages the attention computation, incorporating optional dropout settings on the LoRA modules.
+## 🛠️ Environment Setup
 
-### Example Usage
 
-The following snippet demonstrates how to initialize the `PlainMultiheadAttentionLoRA` with an existing multi-head attention module.
+**Note**: Creating a new environment requires matching CUDA versions. The code was developed with CUDA 11.8.
 
-```python
-from loralib.layers import PlainMultiheadAttentionLoRA
+#### 1. Create Conda Environment
 
-# Initialize with an existing MultiheadAttention module
-existing_mha = nn.MultiheadAttention(embed_dim=512, num_heads=8)
-lora_mha = PlainMultiheadAttentionLoRA(existing_mha, enable_lora=['q', 'k', 'v', 'o'], r=4, lora_alpha=2)
+```bash
+conda create -n VtT python=3.10 -y
+conda activate VtT
 ```
 
-## Few-shot performance
+#### 2. Install PyTorch with CUDA Support
 
-<p align="center">
-  <img src="few_shot.png" alt="few_shot" width="750" height="500">
-  <br>
-  <em>Figure 2: Detailed few-shot learning results on the 10 fine-grained datasets and ImageNet with the ViT-B/16 visual backbone. Average performance for the ViT-B/16, ViT-B/32 and ViT-L/14 on the same 11 datasets is reported in the last three plots.</em>
-</p>
+```bash
+# For CUDA 11.8
+pip install torch==2.0.1+cu118 torchvision==0.15.2+cu118 --index-url https://download.pytorch.org/whl/cu118
+```
 
-## Citation
+#### 3. Install Mamba Dependencies
 
-If you find this project useful, please cite it as follows:
+```bash
+pip install mamba-ssm causal-conv1d
+```
+
+#### 4. Install Other Dependencies
+
+```bash
+pip install -r requirements.txt
+```
+
+#### 5. Install CLIP (OpenAI)
+
+```bash
+pip install git+https://github.com/openai/CLIP.git
+```
+
+## 📦 Datasets
+
+- **EuroSAT**: Satellite imagery land cover classification
+- **CropDisease**: Plant disease recognition
+- **ISIC**: Skin lesion classification (dermatology)
+- **ChestX**: Chest X-ray disease classification
+
+Please prepare your datasets in the appropriate directory structure before running experiments.
+
+## 🚀 Usage
+
+### Training Commands
+
+**For EuroSAT and CropDisease:**
+
+```bash
+# 1-shot setting
+python main.py --encoder vision --r 16 --alpha 8 --epochs 250 --shot 1 --episodes 800 --dataset EuroSAT
+
+python main.py --encoder vision --r 16 --alpha 8 --epochs 250 --shot 1 --episodes 800 --dataset CropDisease
+
+# 5-shot setting
+python main.py --encoder vision --r 16 --alpha 8 --epochs 250 --shot 5 --episodes 400 --dataset EuroSAT
+
+python main.py --encoder vision --r 16 --alpha 8 --epochs 250 --shot 5 --episodes 400 --dataset CropDisease
+```
+
+**For ISIC and ChestX:**
+
+```bash
+# 1-shot setting
+python main.py --encoder vision --r 16 --alpha 8 --epochs 250 --shot 1 --episodes 800 --dataset ISIC --lr 4e-4 --mamba_lr 1e-3
+
+python main.py --encoder vision --r 16 --alpha 8 --epochs 250 --shot 1 --episodes 800 --dataset ChestX --lr 4e-4 --mamba_lr 1e-3
+
+# 5-shot setting
+python main.py --encoder vision --r 16 --alpha 8 --epochs 250 --shot 5 --episodes 400 --dataset ISIC --lr 4e-4 --mamba_lr 1e-3
+
+python main.py --encoder vision --r 16 --alpha 8 --epochs 250 --shot 5 --episodes 400 --dataset ChestX --lr 4e-4 --mamba_lr 1e-3
+```
+
+### Key Arguments
+
+| Argument | Description | Default |
+|----------|-------------|---------|
+| `--dataset` | Dataset name (EuroSAT/CropDisease/ISIC/ChestX) | ISIC |
+| `--shot` | Number of support examples per class (1 or 5) | 5 |
+| `--way` | Number of classes per episode | 5 |
+| `--episodes` | Number of test episodes | 400 |
+| `--epochs` | Training epochs per episode | 250 |
+| `--encoder` | Which encoder to fine-tune (vision/text/both) | vision |
+| `--r` | LoRA rank | 16 |
+| `--alpha` | LoRA scaling factor | 8 |
+| `--lr` | Learning rate for LoRA parameters | 2e-4 |
+| `--mamba_lr` | Learning rate for Mamba parameters | 5e-4 |
+| `--beta` | Gradient projection coefficient | 7 |
+| `--grad_steps` | Gradient steps for beta update | 50 |
+
+## 🔧 Implementation Details
+
+**Important**: We modified the CLIP text encoder implementation to support an **absorb token** mechanism that replaces the class name token. This is critical for the VtT method to work correctly.
+
+See `/home/zzy/VLM_FSL/VtT/clip/model.py` line 265 onwards for the implementation details.
+
+### Architecture Overview
+
+The model consists of:
+1. **CLIP backbone** (ViT-B/16) for feature extraction
+2. **LoRA adapters** for efficient fine-tuning
+3. **Mamba-based cross-modal bridge** for vision-to-text alignment
+4. **Absorb token mechanism** in the text encoder
+
+## 📝 Citation
+
+If you find this work useful for your research, please cite:
 
 ```bibtex
-@inproceedings{zanella2024low,
-  title={Low-Rank Few-Shot Adaptation of Vision-Language Models},
-  author={Zanella, Maxime and Ben Ayed, Ismail},
-  booktitle={Proceedings of the IEEE/CVF Conference on Computer Vision and Pattern Recognition},
-  pages={1593--1603},
-  year={2024}
+@article{zhang2026reclaiming,
+  title={Reclaiming Lost Text Layers for Source-Free Cross-Domain Few-Shot Learning},
+  author={Zhang, Zhenyu and Chen, Guangyao and Zou, Yixiong and Li, Yuhua and Li, Ruixuan},
+  journal={arXiv preprint arXiv:2603.05235},
+  year={2026}
 }
 ```
 
-## Contact
+## 🙏 Acknowledgments
 
-For any inquiries, feel free to [create an issue](https://github.com/MaxZanella/CLIP-LoRA/issues) or contact us at [maxime.zanella@uclouvain.be](mailto:maxime.zanella@uclouvain.be).
+This repository is developed based on:
+- [CLIP-LoRA](https://github.com/MaxZanella/CLIP-LoRA)
+- [Mamba](https://github.com/state-spaces/mamba)
+- [StepSPT](https://github.com/xuhuali-mxj/StepSPT)
 
-## Acknowledgement
+We thank the authors for their excellent codebases.
 
-We express our gratitude to the [CoOp](https://github.com/KaiyangZhou/CoOp) and [Tip-Adapter](https://github.com/gaopengcuhk/Tip-Adapter) authors for their open-source contribution.
+## 📄 License
 
+This project is released under the MIT License.
 
+## 📧 Contact
+
+For questions or issues, please open an issue on this repository or contact the authors.

@@ -103,6 +103,16 @@ def get_lora_parameters(model, bias='none'):
             raise NotImplementedError
     return params
 
+def get_lora_and_prompt_parameters(model, bias='none'):
+    params = []
+    for name, param in model.named_parameters():
+        if 'lora_' in name:
+            params.append(param)
+        if 'prompt_learner' in name:
+            params.append(param)
+       
+    return params
+
 
 def apply_lora(args, clip_model):
     list_lora_layers = []
@@ -188,6 +198,7 @@ def load_lora(args, list_lora_layers):
     # to manage names like ViT-B/16
     backbone = args.backbone.replace('/', '').replace('-', '').lower()
     load_path = f'{args.save_path}/{backbone}/{args.dataset}/{args.shots}shots/seed{args.seed}/{args.filename}.pt'
+    #load_path = f'{args.save_path}/{backbone}/imagenet/{args.shots}shots/seed{args.seed}/{args.filename}.pt'
 
     if not os.path.exists(load_path):
         raise FileNotFoundError(f'File {load_path} does not exist.')

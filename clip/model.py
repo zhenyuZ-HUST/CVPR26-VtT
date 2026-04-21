@@ -195,8 +195,15 @@ class Transformer(nn.Module):
         self.layers = layers
         self.resblocks = nn.Sequential(*[ResidualAttentionBlock(width, heads, attn_mask) for _ in range(layers)])
 
-    def forward(self, x: torch.Tensor):
-        return self.resblocks(x)
+    def forward(self, x: torch.Tensor, ret_all=False):
+        if(ret_all==False):
+            return self.resblocks(x)
+        else:
+            ret_result = []
+            for layer in self.resblocks:
+                x = layer(x)
+                ret_result.append(x)
+            return ret_result
 
 
 class VisionTransformer(nn.Module):
@@ -216,24 +223,76 @@ class VisionTransformer(nn.Module):
         self.ln_post = LayerNorm(width)
         self.proj = nn.Parameter(scale * torch.randn(width, output_dim))
 
-    def forward(self, x: torch.Tensor):
+    # def forward(self, x: torch.Tensor, more_token): 
+    #     x = self.conv1(x)  # shape = [*, width, grid, grid]
+    #     x = x.reshape(x.shape[0], x.shape[1], -1)  # shape = [*, width, grid ** 2]
+    #     x = x.permute(0, 2, 1)  # shape = [*, grid ** 2, width]
+    #     x = torch.cat([self.class_embedding.to(x.dtype) + torch.zeros(x.shape[0], 1, x.shape[-1], dtype=x.dtype, device=x.device), x], dim=1)  # shape = [*, grid ** 2 + 1, width]
+    #     if(more_token!=None):
+    #         x = x + more_token(x)
+    #     else:
+    #         x = x + self.positional_embedding.to(x.dtype)
+    #     # if(more_token!=None):
+    #     #     #with torch.amp.autocast(device_type="cuda", dtype=torch.float16):
+    #     #     cls_token = more_token
+    #     #     cls_token = torch.unsqueeze(cls_token, dim=0).repeat(x.size(0),1,1)
+    #     #     x = torch.cat([x,cls_token], dim=1)
+        
+    #     x = self.ln_pre(x)
+
+    #     x = x.permute(1, 0, 2)  # NLD -> LND
+    #     x = self.transformer(x)
+    #     x = x.permute(1, 0, 2)  # LND -> NLD
+
+
+    #     # if(more_token!=None):
+    #     #     x_raw = x[:, :1, :]
+    #     #     x_more = x[:, -4:, :]
+    #     #     x = torch.cat([x_raw, x_more], dim=1)
+    #     #     x = self.ln_post(x)
+    #     # else:
+    #     x = self.ln_post(x[:, 0, :])
+
+    #     if self.proj is not None:
+    #         x = x @ self.proj
+
+    #     return x
+    
+    def forward(self, x: torch.Tensor, more_token=None, ret_all = False):
         x = self.conv1(x)  # shape = [*, width, grid, grid]
         x = x.reshape(x.shape[0], x.shape[1], -1)  # shape = [*, width, grid ** 2]
         x = x.permute(0, 2, 1)  # shape = [*, grid ** 2, width]
-        x = torch.cat([self.class_embedding.to(x.dtype) + torch.zeros(x.shape[0], 1, x.shape[-1], dtype=x.dtype, device=x.device), x], dim=1)  # shape = [*, grid ** 2 + 1, width]
+        if(more_token==None):
+            x = torch.cat([self.class_embedding.to(x.dtype) + torch.zeros(x.shape[0], 1, x.shape[-1], dtype=x.dtype, device=x.device), x], dim=1)  # shape = [*, grid ** 2 + 1, width]
+        else:
+            x = torch.cat([torch.unsqueeze(more_token.to(x.dtype), dim=1), x], dim=1)
+            #x = torch.cat([(torch.unsqueeze(more_token.to(x.dtype), dim=1)) * 0.5 + (self.class_embedding.to(x.dtype) + torch.zeros(x.shape[0], 1, x.shape[-1], dtype=x.dtype, device=x.device)) * 0.5, x], dim=1)
         x = x + self.positional_embedding.to(x.dtype)
+        
         x = self.ln_pre(x)
 
         x = x.permute(1, 0, 2)  # NLD -> LND
-        x = self.transformer(x)
-        x = x.permute(1, 0, 2)  # LND -> NLD
+        if(ret_all == False):
+            x = self.transformer(x)
+            x = x.permute(1, 0, 2)  # LND -> NLD
 
-        x = self.ln_post(x[:, 0, :])
 
-        if self.proj is not None:
-            x = x @ self.proj
+            x = self.ln_post(x[:, 0, :])
 
-        return x
+            if self.proj is not None:
+                x = x @ self.proj
+
+            return x
+        else:
+            ret_result = []
+            all_x = self.transformer(x, ret_all=True)
+            for l in all_x:
+                l = l.permute(1, 0, 2)  # LND -> NLD
+                ret = self.ln_post(l[:, 0, :])
+                if self.proj is not None:
+                    ret = ret @ self.proj
+                ret_result.append(ret)
+            return ret_result[-1], torch.stack(ret_result, dim=1)
 
 
 class CLIP(nn.Module):
@@ -333,23 +392,45 @@ class CLIP(nn.Module):
     def dtype(self):
         return self.visual.conv1.weight.dtype
 
-    def encode_image(self, image):
-        return self.visual(image.type(self.dtype))
+    def encode_image(self, image, more_token=None, ret_all = False):
+        return self.visual(image.type(self.dtype),more_token, ret_all)
 
-    def encode_text(self, text):
-        x = self.token_embedding(text).type(self.dtype)  # [batch_size, n_ctx, d_model]
-
+    def encode_text(self, text, inject=None, ret_all=False):
+        if(inject != None):
+            x = self.token_embedding(text).type(self.dtype)
+            x[:,5] = inject
+        else:
+            x = self.token_embedding(text).type(self.dtype)  # [batch_size, n_ctx, d_model]
+        # if(inject != None):
+        #     #inject = inject.unsqueeze(1)
+        #     x[:,idx+1,:] = inject
         x = x + self.positional_embedding.type(self.dtype)
         x = x.permute(1, 0, 2)  # NLD -> LND
-        x = self.transformer(x)
-        x = x.permute(1, 0, 2)  # LND -> NLD
-        x = self.ln_final(x).type(self.dtype)
+        if(ret_all == False):
+            x = self.transformer(x)
+            x = x.permute(1, 0, 2)  # LND -> NLD
+            x = self.ln_final(x).type(self.dtype)
 
-        # x.shape = [batch_size, n_ctx, transformer.width]
-        # take features from the eot embedding (eot_token is the highest number in each sequence)
-        x = x[torch.arange(x.shape[0]), text.argmax(dim=-1)] @ self.text_projection
+            # x.shape = [batch_size, n_ctx, transformer.width]
+            # take features from the eot embedding (eot_token is the highest number in each sequence)
+            # test = [torch.arange(x.shape[0]), text.argmax(dim=-1)]
+            # res_token_feature = x[:,0:5,:]  @ self.text_projection
 
-        return x
+            x = x[torch.arange(x.shape[0]), text.argmax(dim=-1)] @ self.text_projection
+
+            #return x
+
+            return x
+        else:
+            ret_result = []
+            all_x = self.transformer(x, ret_all=True)
+            for l in all_x:
+                l = l.permute(1, 0, 2)  # LND -> NLD
+                l = self.ln_final(l).type(self.dtype)
+                ret = l[torch.arange(l.shape[0]), text.argmax(dim=-1)] @ self.text_projection
+                ret_result.append(ret)
+            return ret_result[-1], torch.stack(ret_result, dim=1)
+
 
     def forward(self, image, text):
         image_features = self.encode_image(image)
